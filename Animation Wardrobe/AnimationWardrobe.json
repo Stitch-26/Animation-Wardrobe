@@ -8,7 +8,7 @@
     "AssemblyVersion": "1.0.0.0",
     "IconUrl": "https://raw.githubusercontent.com/Stitch-26/Animation-Wardrobe/master/Animation%20Wardrobe/Images/wardrobe.png",
     "Repository": "https://github.com/Stitch-26/Animation-Wardrobe",
-    "DownloadLinkInstall": "https://github.com/Stitch-26/Animation-Wardrobe/releases/download/1.0.0/latest.zip",
+    "DownloadLinkInstall": "https://github.com/Stitch-26/Animation-Wardrobe/releases/download/1.0.0/AnimationWardrobe.dll",
     "IsEnabled": true,
     "LoadPriority": 0,
     "Tags": [
