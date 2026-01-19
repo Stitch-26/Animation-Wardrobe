@@ -1,16 +1,16 @@
 [
-{
-  "Name": "Animation Wardrobe",
-  "Author": "Stitch",
-  "Version": "1.0.0",
-  "Punchline": "Animation mods now made easy!",
-  "Description": "Assign animations to a button and view them in a catalogue.",
-  "ApplicableVersion": "any",
-  "RepoUrl": "https://github.com/Stitch-26/Animation-Wardrobe",
-  "DownloadLinkInstall": "https://github.com/Stitch-26/Animation-Wardrobe/releases/download/1.0.0/latest.zip",
-  "Tags": [
-	"animations",
-	"mods"
-  ]
-}
+  {
+    "Name": "Animation Wardrobe",
+    "Author": "Stitch",
+    "Version": "1.0.0",
+    "Description": "Assign animations to a button and view them in a catalogue.",
+    "Repository": "https://github.com/Stitch-26/Animation-Wardrobe",
+    "DownloadLink": "https://github.com/Stitch-26/Animation-Wardrobe/releases/download/1.0.0/latest.zip",
+    "IsEnabled": true,
+    "LoadPriority": 0,
+    "Tags": [
+      "animations",
+      "mods"
+    ]
+  }
 ]
