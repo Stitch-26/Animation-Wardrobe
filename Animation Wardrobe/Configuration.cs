@@ -28,6 +28,7 @@ public class ModEntry
     public string Emote { get; set; } = "";
     public int Pose { get; set; } = 0;
     public string Category { get; set; } = "";
+    public string Collection { get; set; } = "";
 }
 
 [Serializable]
@@ -40,6 +41,7 @@ public class Configuration : IPluginConfiguration
     public List<ModEntry> TextEntries { get; set; } = new();
     public List<string> Categories { get; set; } = new();
     public Dictionary<string, uint> CategoryIcons { get; set; } = new();
+    public string DefaultCollection { get; set; } = "";
     public Dalamud.Game.ClientState.Keys.VirtualKey Hotkey { get; set; } = Dalamud.Game.ClientState.Keys.VirtualKey.F9;
     public HotkeyWindowAnchor HotkeyWindowAnchor { get; set; } = HotkeyWindowAnchor.TopLeft;
     public float HotkeyWindowOpacity { get; set; } = 0.0f;
