@@ -7,7 +7,7 @@
     "InternalName": "AnimationWardrobe",
     "AssemblyVersion": "1.0.0.0",
     "Repository": "https://github.com/Stitch-26/Animation-Wardrobe",
-    "DownloadLink": "https://github.com/Stitch-26/Animation-Wardrobe/releases/download/1.0.0/latest.zip",
+    "DownloadLinkInstall": "https://github.com/Stitch-26/Animation-Wardrobe/releases/download/1.0.0/latest.zip",
     "IsEnabled": true,
     "LoadPriority": 0,
     "Tags": [
