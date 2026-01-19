@@ -202,23 +202,40 @@ public class HotkeyWindow : Window, IDisposable
     private void ExecuteModEntry(ModEntry entry)
     {
         var mods = plugin.PenumbraManager.GetMods();
+        var collections = plugin.PenumbraManager.GetCollections();
         var currentEmote = entry.Emote;
+
+        // Helper to get collection ID for an entry
+        Guid GetCollectionId(ModEntry e)
+        {
+            if (!string.IsNullOrEmpty(e.Collection))
+            {
+                var id = collections.FirstOrDefault(kvp => kvp.Value == e.Collection).Key;
+                if (id != Guid.Empty) return id;
+            }
+            if (!string.IsNullOrEmpty(plugin.Configuration.DefaultCollection))
+            {
+                var id = collections.FirstOrDefault(kvp => kvp.Value == plugin.Configuration.DefaultCollection).Key;
+                if (id != Guid.Empty) return id;
+            }
+            return plugin.PenumbraManager.GetCurrentCollection().Id;
+        }
 
         // 1. Handle mod states: disable others in the same emote group, enable the current one
         if (!string.IsNullOrWhiteSpace(currentEmote))
         {
-            var (collectionId, _) = plugin.PenumbraManager.GetCurrentCollection();
-            if (collectionId != Guid.Empty)
+            foreach (var otherEntry in plugin.Configuration.TextEntries)
             {
-                foreach (var otherEntry in plugin.Configuration.TextEntries)
+                if (otherEntry.Emote == currentEmote)
                 {
-                    if (otherEntry.Emote == currentEmote)
-                    {
-                        var modPath = mods.FirstOrDefault(kvp => kvp.Value == otherEntry.ModName).Key;
-                        if (string.IsNullOrEmpty(modPath)) continue;
+                    var modPath = mods.FirstOrDefault(kvp => kvp.Value == otherEntry.ModName).Key;
+                    if (string.IsNullOrEmpty(modPath)) continue;
 
+                    var targetCollectionId = GetCollectionId(otherEntry);
+                    if (targetCollectionId != Guid.Empty)
+                    {
                         int state = (otherEntry.ModName == entry.ModName) ? 0 : 1;
-                        plugin.PenumbraManager.HandleModState(state, collectionId, modPath, otherEntry.ModName);
+                        plugin.PenumbraManager.HandleModState(state, targetCollectionId, modPath, otherEntry.ModName);
                     }
                 }
             }
@@ -228,10 +245,10 @@ public class HotkeyWindow : Window, IDisposable
             var modPath = mods.FirstOrDefault(kvp => kvp.Value == entry.ModName).Key;
             if (!string.IsNullOrEmpty(modPath))
             {
-                var (collectionId, _) = plugin.PenumbraManager.GetCurrentCollection();
-                if (collectionId != Guid.Empty)
+                var targetCollectionId = GetCollectionId(entry);
+                if (targetCollectionId != Guid.Empty)
                 {
-                    plugin.PenumbraManager.HandleModState(0, collectionId, modPath, entry.ModName);
+                    plugin.PenumbraManager.HandleModState(0, targetCollectionId, modPath, entry.ModName);
                 }
             }
         }

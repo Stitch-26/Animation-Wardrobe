@@ -1,4 +1,4 @@
-using Dalamud.Game.Command;
+﻿using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using System;
@@ -160,6 +160,16 @@ public sealed class Plugin : IDalamudPlugin
 
         // Adds another button doing the same but for the main ui of the plugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
+
+        CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Open the Animation Wardrobe main window."
+        });
+
+        CommandManager.AddHandler(DPoseCommandName, new CommandInfo(OnDPoseCommand)
+        {
+            HelpMessage = "Manage player poses. Usage: /dpose <index>"
+        });
 
         LogToFile("--- Plugin Constructor End ---");
         Log.Information($"===A cool log message from {PluginInterface.Manifest.Name}===");

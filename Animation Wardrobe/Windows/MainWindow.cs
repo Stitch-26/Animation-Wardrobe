@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -22,6 +22,7 @@ public class MainWindow : Window, IDisposable
     private string newEntryText = "";
     private string newButtonName = "";
     private string newCategory = "";
+    private string newCollection = "";
     private string newCategoryName = "";
     private uint newCategoryIcon = 0;
     private string iconSearchText = "";
@@ -38,11 +39,9 @@ public class MainWindow : Window, IDisposable
     private bool penumbraAvailable = false;
     private DateTime lastPenumbraCheck = DateTime.MinValue;
 
-    // We give this window a hidden ID using ##.
-    // The user will see "My Amazing Window" as window title,
-    // but for ImGui the ID is "My Amazing Window##With a hidden ID"
+    // We give this window a constant ID using ###.
     public MainWindow(Plugin plugin, string animationImagePath)
-        : base("Animation Wardrobe##With a hidden ID", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
+        : base("Animation Wardrobe###AnimationWardrobeMainWindow", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
     {
         SizeConstraints = new WindowSizeConstraints
         {
@@ -143,11 +142,27 @@ public class MainWindow : Window, IDisposable
         var modDir = availableMods.FirstOrDefault(kvp => kvp.Value == entry.ModName).Key;
         if (string.IsNullOrEmpty(modDir)) return;
 
-        var (collectionId, _) = plugin.PenumbraManager.GetCurrentCollection();
-
-        if (collectionId != Guid.Empty)
+        // Use the collection assigned to the entry, or the default collection if none, or current if both are missing
+        Guid targetCollectionId = Guid.Empty;
+        
+        if (!string.IsNullOrEmpty(entry.Collection))
         {
-            plugin.PenumbraManager.HandleModState(state, collectionId, modDir, entry.ModName);
+            targetCollectionId = penumbraCollections.FirstOrDefault(kvp => kvp.Value == entry.Collection).Key;
+        }
+        
+        if (targetCollectionId == Guid.Empty && !string.IsNullOrEmpty(plugin.Configuration.DefaultCollection))
+        {
+            targetCollectionId = penumbraCollections.FirstOrDefault(kvp => kvp.Value == plugin.Configuration.DefaultCollection).Key;
+        }
+
+        if (targetCollectionId == Guid.Empty)
+        {
+            (targetCollectionId, _) = plugin.PenumbraManager.GetCurrentCollection();
+        }
+
+        if (targetCollectionId != Guid.Empty)
+        {
+            plugin.PenumbraManager.HandleModState(state, targetCollectionId, modDir, entry.ModName);
         }
     }
 
@@ -410,10 +425,10 @@ public class MainWindow : Window, IDisposable
                             }
                         }
                     }
+                    }
                 }
-            }
-            else
-            {
+                else
+                {
                 ImGui.TextDisabled("Emote Icons (common):");
                 int displayCount = 0;
                 foreach (var kvp in plugin.EmoteIcons)
@@ -462,6 +477,68 @@ public class MainWindow : Window, IDisposable
     {
         if (ImGui.BeginChild("SettingsChild"))
         {
+            // --- Penumbra Integration ---
+            if (ImGui.CollapsingHeader("Penumbra Integration", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.Spacing();
+                
+                if (ImGui.BeginTable("PenumbraSettingsTable", 2, ImGuiTableFlags.SizingFixedFit))
+                {
+                    ImGui.TableSetupColumn("Label", ImGuiTableColumnFlags.WidthFixed, 150);
+                    ImGui.TableSetupColumn("Input", ImGuiTableColumnFlags.WidthStretch);
+
+                    ImGui.TableNextRow();
+                    ImGui.TableSetColumnIndex(0);
+                    ImGui.Text("Default Collection:");
+                    ImGuiComponents.HelpMarker("The Penumbra collection to use when no specific collection is assigned to a mod entry.");
+                    
+                    ImGui.TableSetColumnIndex(1);
+                    
+                    if (!penumbraAvailable)
+                    {
+                        ImGui.TextDisabled("Penumbra not available.");
+                        ImGui.SameLine();
+                        if (ImGui.Button("Retry Connection"))
+                        {
+                            UpdatePenumbraData();
+                        }
+                    }
+                    else
+                    {
+                        var defaultCollection = plugin.Configuration.DefaultCollection;
+                        ImGui.SetNextItemWidth(250);
+                        var preview = string.IsNullOrEmpty(defaultCollection) ? "None (Use Current)" : defaultCollection;
+                        if (ImGui.BeginCombo("##DefaultCollection", preview))
+                        {
+                            if (ImGui.Selectable("None (Use Current)", string.IsNullOrEmpty(defaultCollection)))
+                            {
+                                plugin.Configuration.DefaultCollection = "";
+                                plugin.Configuration.Save();
+                            }
+                            
+                            if (penumbraCollections.Count == 0)
+                            {
+                                ImGui.TextDisabled("No collections found.");
+                            }
+                            
+                            foreach (var col in penumbraCollections.Values)
+                            {
+                                if (ImGui.Selectable(col, defaultCollection == col))
+                                {
+                                    plugin.Configuration.DefaultCollection = col;
+                                    plugin.Configuration.Save();
+                                }
+                            }
+                            ImGui.EndCombo();
+                        }
+                    }
+
+                    ImGui.EndTable();
+                }
+                
+                ImGui.Spacing();
+            }
+
             // --- Hotkey Configuration ---
             if (ImGui.CollapsingHeader("Hotkey Configuration", ImGuiTreeNodeFlags.DefaultOpen))
             {
@@ -627,6 +704,7 @@ public class MainWindow : Window, IDisposable
             {
                 ImGui.Spacing();
                 
+                ImGui.SetNextItemWidth(200);
                 ImGui.InputTextWithHint("##newCategoryName", "New category name...", ref newCategoryName, 50);
                 ImGui.SameLine();
                 DrawIconSelector("##newCatIcon", ref newCategoryIcon);
@@ -647,7 +725,7 @@ public class MainWindow : Window, IDisposable
                 }
                 ImGuiComponents.HelpMarker("Create groups to organize your mods. Each category can have its own icon.");
 
-                if (ImGui.BeginTable("CategoriesTable", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
+                if (ImGui.BeginTable("CategoriesTable", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp, new Vector2(-1, 0)))
                 {
                     ImGui.TableSetupColumn("Category Name", ImGuiTableColumnFlags.WidthStretch, 200);
                     ImGui.TableSetupColumn("Icon", ImGuiTableColumnFlags.WidthFixed, 100);
@@ -699,39 +777,139 @@ public class MainWindow : Window, IDisposable
 
     private void DrawModsTab()
     {
-        if (!penumbraAvailable)
-        {
-            ImGui.TextColored(new Vector4(1, 0, 0, 1), "Penumbra not detected or IPC not ready.");
-            if (ImGui.Button("Retry Connection"))
-            {
-                UpdatePenumbraData();
-            }
-        }
-        else
-        {
-            ImGui.TextColored(new Vector4(0, 1, 0, 1), $"Penumbra Connected: {availableMods.Count} mods loaded.");
-        }
-       
-
         ImGui.Spacing();
         ImGui.Separator();
 
-        // Input field with fuzzy search for mods
-        ImGui.SetNextItemWidth(180);
-        bool inputChanged = ImGui.InputTextWithHint("##newEntryInput", "Mod Name...", ref newEntryText, 256);
-        if (inputChanged)
+        // Inputs for new entry
+        if (ImGui.BeginTable("NewEntryInputs", 4, ImGuiTableFlags.SizingStretchProp, new Vector2(-1, 0)))
         {
-            UpdateFilteredMods(newEntryText);
+            ImGui.TableSetupColumn("ModName", ImGuiTableColumnFlags.WidthStretch, 150);
+            ImGui.TableSetupColumn("Label", ImGuiTableColumnFlags.WidthStretch, 100);
+            ImGui.TableSetupColumn("Collection", ImGuiTableColumnFlags.WidthStretch, 100);
+            ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthStretch, 100);
+
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputTextWithHint("##newEntryInput", "Mod Name...", ref newEntryText, 256))
+            {
+                UpdateFilteredMods(newEntryText);
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The exact folder name of the mod in Penumbra.");
+
+            ImGui.TableSetColumnIndex(1);
+            ImGui.SetNextItemWidth(-1);
+            ImGui.InputTextWithHint("##newButtonName", "Button Label...", ref newButtonName, 100);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The text that will appear on the button.");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The Penumbra collection this mod belongs to.");
+
+            ImGui.TableSetColumnIndex(2);
+            ImGui.SetNextItemWidth(-1);
+            var categoryPreview = string.IsNullOrWhiteSpace(newCategory) ? "No Category" : newCategory;
+            if (ImGui.BeginCombo("##newCategory", categoryPreview))
+            {
+                if (ImGui.Selectable("No Category", string.IsNullOrWhiteSpace(newCategory)))
+                {
+                    newCategory = "";
+                }
+                foreach (var cat in plugin.Configuration.Categories)
+                {
+                    if (ImGui.Selectable(cat, newCategory == cat))
+                    {
+                        newCategory = cat;
+                    }
+                }
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The category to group this mod under.");
+
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            
+            // Emote selection
+            ImGui.SetNextItemWidth(-1);
+            var selectedEmoteName = selectedEmoteIndex >= 0 && selectedEmoteIndex < plugin.Emotes.Length ? plugin.Emotes[selectedEmoteIndex] : "None";
+            var emotePreview = selectedEmoteName;
+            if (ImGui.BeginCombo("##emoteDropdown", emotePreview, ImGuiComboFlags.HeightLarge))
+            {
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputTextWithHint("##emoteSearch", "Search emotes...", ref emoteSearchText, 100);
+                ImGui.Separator();
+
+                using (var child = ImRaii.Child("##emoteListChild", new Vector2(0, 250), false))
+                {
+                    if (child.Success)
+                    {
+                        for (int i = 0; i < plugin.Emotes.Length; i++)
+                        {
+                            var emoteName = plugin.Emotes[i];
+                            if (!string.IsNullOrWhiteSpace(emoteSearchText) && FuzzyScore(emoteSearchText, emoteName) == int.MaxValue) continue;
+
+                            var isSelected = selectedEmoteIndex == i;
+                            if (plugin.EmoteIcons.TryGetValue(emoteName, out var emoteIcon) && emoteIcon != null)
+                            {
+                                var wrap = emoteIcon.GetWrapOrDefault();
+                                if (wrap != null)
+                                {
+                                    ImGui.Image(wrap.Handle, new Vector2(24, 24));
+                                    ImGui.SameLine();
+                                }
+                            }
+                            
+                            if (ImGui.Selectable(emoteName, isSelected))
+                            {
+                                selectedEmoteIndex = i;
+                                emoteSearchText = "";
+                            }
+                            if (isSelected) ImGui.SetItemDefaultFocus();
+                        }
+                    }
+                }
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The emote that triggers this animation.");
+
+            ImGui.TableSetColumnIndex(1);
+            var selectedEmote = selectedEmoteIndex >= 0 && selectedEmoteIndex < plugin.Emotes.Length ? plugin.Emotes[selectedEmoteIndex] : "";
+            if (PoseEmotes.Contains(selectedEmote))
+            {
+                ImGui.SetNextItemWidth(-1);
+                ImGui.InputInt("##newPose", ref newPose, 0, 0);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("The pose index (0-indexed) to switch to.");
+            }
+
+            ImGui.TableSetColumnIndex(2);
+            if (ImGui.Button("Add Mod Entry", new Vector2(-1, 0)))
+            {
+                if (!string.IsNullOrWhiteSpace(newEntryText))
+                {
+                    var emoteName = selectedEmoteIndex >= 0 && selectedEmoteIndex < plugin.Emotes.Length ? plugin.Emotes[selectedEmoteIndex] : "";
+                    var entry = new ModEntry
+                    {
+                        ModName = newEntryText,
+                        ButtonName = newButtonName,
+                        Emote = emoteName,
+                        Pose = PoseEmotes.Contains(emoteName) ? newPose : 0,
+                        Category = newCategory,
+                        Collection = newCollection
+                    };
+                    plugin.Configuration.TextEntries.Add(entry);
+                    plugin.Configuration.Save();
+
+                    newEntryText = "";
+                    newButtonName = "";
+                    newCollection = "";
+                    selectedEmoteIndex = 0;
+                    newPose = 0;
+                }
+            }
+
+            ImGui.EndTable();
         }
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(150);
-        ImGui.InputTextWithHint("##newButtonName", "Button Label (optional)...", ref newButtonName, 100);
-        ImGui.SameLine();
-        
+
         // Show mod suggestions dropdown if there are matches and not too many
         if (filteredMods.Count > 0 && filteredMods.Count <= 30 && !string.IsNullOrWhiteSpace(newEntryText))
         {
-            ImGui.Spacing();
             var dropdownHeight = Math.Min(500, filteredMods.Count * 25);
             using (var child = ImRaii.Child("ModSuggestions##dropdown", new Vector2(-1, dropdownHeight), true))
             {
@@ -747,153 +925,13 @@ public class MainWindow : Window, IDisposable
                             break;
                         }
                     }
-                    if (modSelected)
-                    {
-                        filteredMods.Clear();
-                    }
+                    if (modSelected) filteredMods.Clear();
                 }
             }
         }
         else if (filteredMods.Count > 30 && !string.IsNullOrWhiteSpace(newEntryText))
         {
             ImGui.TextColored(new Vector4(1, 1, 0, 1), $"Too many matches ({filteredMods.Count}). Refine your search.");
-        }
-        
-        ImGui.Separator();
-        
-        // Custom emote dropdown with icons
-        ImGui.SetNextItemWidth(120);
-        var selectedEmoteName = selectedEmoteIndex >= 0 && selectedEmoteIndex < plugin.Emotes.Length ? plugin.Emotes[selectedEmoteIndex] : "None";
-        var emotePreview = selectedEmoteName;
-        if (plugin.EmoteIcons.TryGetValue(selectedEmoteName, out var icon) && icon != null)
-        {
-            emotePreview = $"{selectedEmoteName}##emotemenu";
-        }
-        
-        if (ImGui.BeginCombo("##emoteDropdown", emotePreview, ImGuiComboFlags.HeightLarge))
-        {
-            // Emote search input - fixed at the top
-            ImGui.SetNextItemWidth(-1);
-            ImGui.InputTextWithHint("##emoteSearch", "Search emotes...", ref emoteSearchText, 100);
-            ImGui.Separator();
-
-            // Scrollable list area
-            using (var child = ImRaii.Child("##emoteListChild", new Vector2(0, 250), false))
-            {
-                if (child.Success)
-                {
-                    for (int i = 0; i < plugin.Emotes.Length; i++)
-                    {
-                        var emoteName = plugin.Emotes[i];
-
-                        // Filter based on search text
-                        if (!string.IsNullOrWhiteSpace(emoteSearchText) && FuzzyScore(emoteSearchText, emoteName) == int.MaxValue)
-                        {
-                            continue;
-                        }
-
-                        var isSelected = selectedEmoteIndex == i;
-                        
-                        // Display icon if available
-                        if (plugin.EmoteIcons.TryGetValue(emoteName, out var emoteIcon) && emoteIcon != null)
-                        {
-                            var wrap = emoteIcon.GetWrapOrDefault();
-                            if (wrap != null)
-                            {
-                                ImGui.Image(wrap.Handle, new Vector2(24, 24));
-                                ImGui.SameLine();
-                            }
-                        }
-                        
-                        if (ImGui.Selectable(emoteName, isSelected))
-                        {
-                            selectedEmoteIndex = i;
-                            emoteSearchText = ""; // Clear search after selection
-                        }
-                        
-                        if (isSelected)
-                        {
-                            ImGui.SetItemDefaultFocus();
-                        }
-                    }
-                }
-            }
-            ImGui.EndCombo();
-        }
-        
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(120);
-        var categoryPreview = string.IsNullOrWhiteSpace(newCategory) ? "None" : newCategory;
-        if (ImGui.BeginCombo("##newCategory", categoryPreview))
-        {
-            if (ImGui.Selectable("None", string.IsNullOrWhiteSpace(newCategory)))
-            {
-                newCategory = "";
-            }
-            foreach (var cat in plugin.Configuration.Categories)
-            {
-                if (ImGui.Selectable(cat, newCategory == cat))
-                {
-                    newCategory = cat;
-                }
-            }
-            ImGui.EndCombo();
-        }
-
-        var selectedEmote = selectedEmoteIndex >= 0 && selectedEmoteIndex < plugin.Emotes.Length ? plugin.Emotes[selectedEmoteIndex] : "";
-        if (PoseEmotes.Contains(selectedEmote))
-        {
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(30);
-            ImGui.InputInt("##newPose", ref newPose, 0, 0);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Pose Number");
-        }
-
-        ImGui.SameLine();
-        if (ImGui.Button("+##addEntry", new Vector2(30, 0)))
-        {
-            if (!string.IsNullOrWhiteSpace(newEntryText))
-            {
-                var emoteName = selectedEmoteIndex >= 0 && selectedEmoteIndex < plugin.Emotes.Length ? plugin.Emotes[selectedEmoteIndex] : "";
-                var entry = new ModEntry
-                {
-                    ModName = newEntryText,
-                    ButtonName = newButtonName,
-                    Emote = emoteName,
-                    Pose = PoseEmotes.Contains(emoteName) ? newPose : 0,
-                    Category = newCategory
-                };
-                plugin.Configuration.TextEntries.Add(entry);
-                plugin.Configuration.Save();
-
-                // Log what emotes this mod actually affects
-                var modDir = availableMods.FirstOrDefault(kvp => kvp.Value == newEntryText).Key;
-                if (!string.IsNullOrEmpty(modDir))
-                {
-                    var changedItems = plugin.PenumbraManager.GetChangedItems(modDir, newEntryText);
-                    var affectedEmotes = changedItems.Keys
-                        .Where(name => plugin.EmoteMap.ContainsKey(name))
-                        .ToList();
-
-                    if (affectedEmotes.Count > 0)
-                    {
-                        Plugin.LogToFile($"New mod entry added: '{newEntryText}' (Label: '{newButtonName}', Category: '{newCategory}', Selected emote: '{emoteName}'). Mod itself affects: {string.Join(", ", affectedEmotes)}");
-                    }
-                    else
-                    {
-                        Plugin.LogToFile($"New mod entry added: '{newEntryText}' (Label: '{newButtonName}', Category: '{newCategory}', Selected emote: '{emoteName}'). Mod doesn't seem to affect any known emotes.");
-                    }
-                }
-                else
-                {
-                    Plugin.LogToFile($"New mod entry added: '{newEntryText}' (Label: '{newButtonName}', Category: '{newCategory}', Selected emote: '{emoteName}'). Could not find mod directory to check affected emotes.");
-                }
-
-                newEntryText = "";
-                newButtonName = "";
-                selectedEmoteIndex = 0;
-                newPose = 0;
-            }
         }
 
         ImGui.Spacing();
@@ -903,12 +941,13 @@ public class MainWindow : Window, IDisposable
         {
             if (child.Success)
             {
-                if (ImGui.BeginTable("ModsTable", 6, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingFixedFit))
+                if (ImGui.BeginTable("ModsTable", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingStretchProp, new Vector2(-1, 0)))
                 {
                     ImGui.TableSetupColumn("Mod Name", ImGuiTableColumnFlags.WidthStretch, 150);
                     ImGui.TableSetupColumn("Label", ImGuiTableColumnFlags.WidthStretch, 80);
                     ImGui.TableSetupColumn("Emote", ImGuiTableColumnFlags.WidthStretch, 80);
                     ImGui.TableSetupColumn("Pose", ImGuiTableColumnFlags.WidthFixed, 25);
+                    ImGui.TableSetupColumn("Collection", ImGuiTableColumnFlags.WidthStretch, 80);
                     ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthStretch, 80);
                     ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 40);
                     ImGui.TableHeadersRow();
@@ -963,8 +1002,38 @@ public class MainWindow : Window, IDisposable
                                     }
                                 }
 
-                                // Category column
+                                // Collection column
                                 ImGui.TableSetColumnIndex(4);
+                                ImGui.SetNextItemWidth(-1);
+                                var entryCollectionPreview = string.IsNullOrWhiteSpace(entry.Collection) ? "Default" : entry.Collection;
+                                if (ImGui.BeginCombo($"##col{i}", entryCollectionPreview))
+                                {
+                                    if (ImGui.Selectable("Default", string.IsNullOrWhiteSpace(entry.Collection)))
+                                    {
+                                        entry.Collection = "";
+                                        plugin.Configuration.Save();
+                                    }
+                                    
+                                    if (!penumbraAvailable)
+                                    {
+                                        ImGui.TextDisabled("Penumbra not available.");
+                                    }
+                                    else
+                                    {
+                                        foreach (var col in penumbraCollections.Values)
+                                        {
+                                            if (ImGui.Selectable(col, entry.Collection == col))
+                                            {
+                                                entry.Collection = col;
+                                                plugin.Configuration.Save();
+                                            }
+                                        }
+                                    }
+                                    ImGui.EndCombo();
+                                }
+
+                                // Category column
+                                ImGui.TableSetColumnIndex(5);
                                 ImGui.SetNextItemWidth(-1);
                                 var entryCategoryPreview = string.IsNullOrWhiteSpace(entry.Category) ? "None" : entry.Category;
                                 if (ImGui.BeginCombo($"##cat{i}", entryCategoryPreview))
@@ -986,7 +1055,7 @@ public class MainWindow : Window, IDisposable
                                 }
 
                                 // Actions column
-                                ImGui.TableSetColumnIndex(5);
+                                ImGui.TableSetColumnIndex(6);
                                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.6f, 0.0f, 0.0f, 1.0f));
                                 
                                 var buttonWidth = 25f;
