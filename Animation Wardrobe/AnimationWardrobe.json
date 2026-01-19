@@ -1,0 +1,12 @@
+{
+  "Author": "Stitch",
+  "Name": "Animation Wardrobe",
+  "Punchline": "Animation mods now made easy!",
+  "Description": "Assign animations to a button and view them in a catalogue.",
+  "ApplicableVersion": "any",
+  "RepoUrl": "https://github.com/Stitch-26/AnimationWardrobe",
+  "Tags": [
+	"animations",
+	"mods"
+  ]
+}
