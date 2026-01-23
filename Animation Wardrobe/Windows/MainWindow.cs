@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -801,9 +801,32 @@ public class MainWindow : Window, IDisposable
             ImGui.SetNextItemWidth(-1);
             ImGui.InputTextWithHint("##newButtonName", "Button Label...", ref newButtonName, 100);
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("The text that will appear on the button.");
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The Penumbra collection this mod belongs to.");
 
             ImGui.TableSetColumnIndex(2);
+            ImGui.SetNextItemWidth(-1);
+            var collectionPreview = string.IsNullOrWhiteSpace(newCollection) ? (string.IsNullOrEmpty(plugin.Configuration.DefaultCollection) ? "Default" : $"{plugin.Configuration.DefaultCollection} (Default)") : newCollection;
+            if (ImGui.BeginCombo("##newCollection", collectionPreview))
+            {
+                if (ImGui.Selectable("Default", string.IsNullOrWhiteSpace(newCollection)))
+                {
+                    newCollection = "";
+                }
+                
+                if (penumbraAvailable)
+                {
+                    foreach (var col in penumbraCollections.Values)
+                    {
+                        if (ImGui.Selectable(col, newCollection == col))
+                        {
+                            newCollection = col;
+                        }
+                    }
+                }
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("The Penumbra collection this mod belongs to.");
+
+            ImGui.TableSetColumnIndex(3);
             ImGui.SetNextItemWidth(-1);
             var categoryPreview = string.IsNullOrWhiteSpace(newCategory) ? "No Category" : newCategory;
             if (ImGui.BeginCombo("##newCategory", categoryPreview))
@@ -891,7 +914,7 @@ public class MainWindow : Window, IDisposable
                         Emote = emoteName,
                         Pose = PoseEmotes.Contains(emoteName) ? newPose : 0,
                         Category = newCategory,
-                        Collection = newCollection
+                        Collection = string.IsNullOrEmpty(newCollection) ? plugin.Configuration.DefaultCollection : newCollection
                     };
                     plugin.Configuration.TextEntries.Add(entry);
                     plugin.Configuration.Save();
