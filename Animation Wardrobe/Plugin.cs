@@ -1,4 +1,4 @@
-﻿using Dalamud.Game.Command;
+using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using System;
@@ -51,6 +51,7 @@ public sealed class Plugin : IDalamudPlugin
     public readonly WindowSystem WindowSystem = new("AnimationWardrobe");
     private MainWindow mainWindow { get; init; } = null!;
     private HotkeyWindow hotkeyWindow { get; init; } = null!;
+    private QuickMenuWindow quickMenuWindow { get; init; } = null!;
 
     private class DelayedCommand
     {
@@ -137,10 +138,13 @@ public sealed class Plugin : IDalamudPlugin
             mainWindow = new MainWindow(this, animationImagePath);
             LogToFile("Creating HotkeyWindow...");
             hotkeyWindow = new HotkeyWindow(this);
+            LogToFile("Creating QuickMenuWindow...");
+            quickMenuWindow = new QuickMenuWindow(this);
 
             LogToFile("Adding windows to WindowSystem...");
             WindowSystem.AddWindow(mainWindow);
             WindowSystem.AddWindow(hotkeyWindow);
+            WindowSystem.AddWindow(quickMenuWindow);
             LogToFile("Windows added successfully");
         }
         catch (Exception ex)
@@ -176,6 +180,7 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private bool hotkeyWasPressed = false;
+    private bool quickMenuHotkeyWasPressed = false;
 
     public static unsafe bool IsInputTextActive()
     {
@@ -196,23 +201,52 @@ public sealed class Plugin : IDalamudPlugin
         if (IsInputTextActive()) return;
 
         var hotkey = Configuration.Hotkey;
-        if (!KeyState.IsVirtualKeyValid(hotkey)) return;
-
-        var isPressed = KeyState[hotkey];
-        if (isPressed && !hotkeyWasPressed)
+        if (KeyState.IsVirtualKeyValid(hotkey))
         {
-            if (hotkeyWindow.IsOpen)
+            var isPressed = KeyState[hotkey];
+            if (isPressed && !hotkeyWasPressed)
             {
-                LogToFile($"Hotkey {hotkey} pressed, closing hotkey window");
-                hotkeyWindow.IsOpen = false;
+                if (hotkeyWindow.IsOpen)
+                {
+                    LogToFile($"Hotkey {hotkey} pressed, closing hotkey window");
+                    hotkeyWindow.IsOpen = false;
+                }
+                else
+                {
+                    LogToFile($"Hotkey {hotkey} pressed, opening hotkey window at mouse");
+                    hotkeyWindow.OpenAtMouse();
+                }
             }
-            else
-            {
-                LogToFile($"Hotkey {hotkey} pressed, opening hotkey window at mouse");
-                hotkeyWindow.OpenAtMouse();
-            }
+            hotkeyWasPressed = isPressed;
         }
-        hotkeyWasPressed = isPressed;
+        else
+        {
+            hotkeyWasPressed = false;
+        }
+
+        var quickMenuHotkey = Configuration.QuickMenuHotkey;
+        if (KeyState.IsVirtualKeyValid(quickMenuHotkey))
+        {
+            var isPressed = KeyState[quickMenuHotkey];
+            if (isPressed && !quickMenuHotkeyWasPressed)
+            {
+                if (quickMenuWindow.IsOpen)
+                {
+                    LogToFile($"Quick Menu hotkey {quickMenuHotkey} pressed, closing quick menu");
+                    quickMenuWindow.IsOpen = false;
+                }
+                else
+                {
+                    LogToFile($"Quick Menu hotkey {quickMenuHotkey} pressed, opening quick menu at mouse");
+                    quickMenuWindow.OpenAtMouse();
+                }
+            }
+            quickMenuHotkeyWasPressed = isPressed;
+        }
+        else
+        {
+            quickMenuHotkeyWasPressed = false;
+        }
     }
 
     public void Dispose()
@@ -228,6 +262,7 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow.Dispose();
         hotkeyWindow.Dispose();
+        quickMenuWindow.Dispose();
 
         PenumbraManager.Dispose();
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using AnimationWardrobe;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
@@ -38,6 +39,11 @@ public class MainWindow : Window, IDisposable
     private Dictionary<Guid, string> penumbraCollections = new();
     private bool penumbraAvailable = false;
     private DateTime lastPenumbraCheck = DateTime.MinValue;
+
+    // Inheritance tab
+    private Guid? selectedInheritanceCollectionId = null;
+    private List<(string ModPath, string ModName)> inheritanceOwnConfigMods = new();
+    private Guid? lastInheritanceCollectionId = null;
 
     // We give this window a constant ID using ###.
     public MainWindow(Plugin plugin, string animationImagePath)
@@ -222,6 +228,10 @@ public class MainWindow : Window, IDisposable
 
     private bool switchToSettings = false;
     private bool isListeningForHotkey = false;
+    private bool isListeningForQuickMenuHotkey = false;
+    private string newQuickCommandName = "";
+    private string newQuickCommandCommand = "";
+    private uint newQuickCommandIcon = 0;
 
     public override void Draw()
     {
@@ -246,6 +256,30 @@ public class MainWindow : Window, IDisposable
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) || ImGui.IsMouseClicked(ImGuiMouseButton.Right))
             {
                 isListeningForHotkey = false;
+            }
+        }
+
+        if (isListeningForQuickMenuHotkey)
+        {
+            foreach (var key in Plugin.KeyState.GetValidVirtualKeys())
+            {
+                if (key == Dalamud.Game.ClientState.Keys.VirtualKey.LBUTTON ||
+                    key == Dalamud.Game.ClientState.Keys.VirtualKey.RBUTTON ||
+                    key == Dalamud.Game.ClientState.Keys.VirtualKey.MBUTTON)
+                    continue;
+
+                if (Plugin.KeyState[key])
+                {
+                    plugin.Configuration.QuickMenuHotkey = key;
+                    plugin.Configuration.Save();
+                    isListeningForQuickMenuHotkey = false;
+                    break;
+                }
+            }
+
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) || ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+            {
+                isListeningForQuickMenuHotkey = false;
             }
         }
 
@@ -279,6 +313,18 @@ public class MainWindow : Window, IDisposable
                 ImGui.EndTabItem();
             }
 
+            if (ImGui.BeginTabItem("Inheritance"))
+            {
+                DrawInheritanceTab();
+                ImGui.EndTabItem();
+            }
+
+            if (ImGui.BeginTabItem("Commands"))
+            {
+                DrawCommandsTab();
+                ImGui.EndTabItem();
+            }
+
             if (ImGui.BeginTabItem("About"))
             {
                 DrawAboutTab();
@@ -309,6 +355,225 @@ public class MainWindow : Window, IDisposable
             ImGui.BulletText("For 'groundsit', 'sit', or 'doze' emotes, a pose index can be assigned to automatically switch to a cpose index.");  
             ImGui.EndChild();
         }
+    }
+
+    private void DrawInheritanceTab()
+    {
+        ImGui.Spacing();
+        ImGui.Separator();
+
+        if (!penumbraAvailable)
+        {
+            ImGui.TextDisabled("Penumbra not available.");
+            ImGui.SameLine();
+            if (ImGui.Button("Retry Connection"))
+                UpdatePenumbraData();
+            return;
+        }
+
+        // Collection dropdown
+        var collectionPreview = selectedInheritanceCollectionId == null || !penumbraCollections.TryGetValue(selectedInheritanceCollectionId.Value, out var selName)
+            ? "Select collection..."
+            : selName;
+        ImGui.SetNextItemWidth(280);
+        if (ImGui.BeginCombo("##InheritanceCollection", collectionPreview))
+        {
+            foreach (var (id, name) in penumbraCollections)
+            {
+                if (ImGui.Selectable(name, selectedInheritanceCollectionId == id))
+                {
+                    selectedInheritanceCollectionId = id;
+                }
+            }
+            ImGui.EndCombo();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Refresh list"))
+        {
+            if (selectedInheritanceCollectionId != null)
+                inheritanceOwnConfigMods = plugin.PenumbraManager.GetModsWithOwnConfiguration(selectedInheritanceCollectionId.Value);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Reload mods with Own Configuration (and not enabled) for the selected collection.");
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker("Collection to view. Table shows mods with Own Configuration that are not enabled.");
+
+        if (selectedInheritanceCollectionId == null)
+        {
+            ImGui.Spacing();
+            ImGui.TextDisabled("Select a collection to view mods with Own Configuration that are not enabled.");
+            return;
+        }
+
+        var collectionId = selectedInheritanceCollectionId.Value;
+        var collectionName = penumbraCollections.GetValueOrDefault(collectionId, "");
+
+        // Refresh mod list when collection changes
+        if (lastInheritanceCollectionId != collectionId)
+        {
+            lastInheritanceCollectionId = collectionId;
+            inheritanceOwnConfigMods = plugin.PenumbraManager.GetModsWithOwnConfiguration(collectionId);
+        }
+
+        ImGui.Spacing();
+
+        // Turn off inheritance for all — use Penumbra TryInheritMod(collectionId, modDirectory, modName, inherit: true)
+        if (inheritanceOwnConfigMods.Count > 0)
+        {
+            if (ImGui.Button($"Turn off inheritance for all ({inheritanceOwnConfigMods.Count} mods)"))
+            {
+                foreach (var (modPath, modName) in inheritanceOwnConfigMods)
+                {
+                    plugin.PenumbraManager.SetModInherit(collectionId, modPath, modName, true);
+                }
+                lastInheritanceCollectionId = null;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Calls TryInheritMod(..., true) to remove explicit settings and use parent collection's.");
+            ImGui.Spacing();
+        }
+
+        // Table of mods with Own Configuration and not enabled
+        using (var child = ImRaii.Child("InheritanceTableContainer", new Vector2(-1, -1), true))
+        {
+            if (child.Success)
+            {
+                if (ImGui.BeginTable("InheritanceModsTable", 2, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp, new Vector2(-1, 0)))
+                {
+                    ImGui.TableSetupColumn("Mod Name", ImGuiTableColumnFlags.WidthStretch, 1);
+                    ImGui.TableSetupColumn("State", ImGuiTableColumnFlags.WidthFixed, 120);
+                    ImGui.TableHeadersRow();
+
+                    foreach (var (modPath, modName) in inheritanceOwnConfigMods)
+                    {
+                        ImGui.TableNextRow();
+                        ImGui.TableSetColumnIndex(0);
+                        ImGui.Text(modName);
+                        ImGui.TableSetColumnIndex(1);
+                        ImGui.Text("Own Config, Disabled");
+                    }
+                    ImGui.EndTable();
+                }
+                if (inheritanceOwnConfigMods.Count == 0 && lastInheritanceCollectionId == collectionId)
+                {
+                    ImGui.Spacing();
+                    ImGui.TextDisabled("No mods with Own Configuration (and not enabled) in this collection.");
+                }
+            }
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+    }
+
+    private void DrawCommandsTab()
+    {
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextColored(new Vector4(0.4f, 0.7f, 1.0f, 1.0f), "Quick access commands");
+        ImGui.Separator();
+        ImGui.TextWrapped("Add name and command pairs. Press the Quick Menu Hotkey (Settings) to open a grid of these buttons; clicking one sends the command to chat.");
+        ImGui.Spacing();
+
+        if (ImGui.BeginTable("NewQuickCommandInputs", 4, ImGuiTableFlags.SizingStretchProp, new Vector2(-1, 0)))
+        {
+            ImGui.TableSetupColumn("Icon", ImGuiTableColumnFlags.WidthFixed, 80);
+            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1);
+            ImGui.TableSetupColumn("Command", ImGuiTableColumnFlags.WidthStretch, 2);
+            ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, 100);
+
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            DrawIconSelector("##newQuickIcon", ref newQuickCommandIcon);
+            ImGui.TableSetColumnIndex(1);
+            ImGui.SetNextItemWidth(-1);
+            ImGui.InputTextWithHint("##newQuickName", "Button name...", ref newQuickCommandName, 128);
+            ImGui.TableSetColumnIndex(2);
+            ImGui.SetNextItemWidth(-1);
+            ImGui.InputTextWithHint("##newQuickCommand", "Command (e.g. /emote)...", ref newQuickCommandCommand, 256);
+            ImGui.TableSetColumnIndex(3);
+            if (ImGui.Button("Add", new Vector2(-1, 0)))
+            {
+                if (!string.IsNullOrWhiteSpace(newQuickCommandName) && !string.IsNullOrWhiteSpace(newQuickCommandCommand))
+                {
+                    plugin.Configuration.QuickCommands.Add(new QuickCommandEntry
+                    {
+                        Name = newQuickCommandName.Trim(),
+                        Command = newQuickCommandCommand.Trim(),
+                        IconId = newQuickCommandIcon
+                    });
+                    plugin.Configuration.Save();
+                    newQuickCommandName = "";
+                    newQuickCommandCommand = "";
+                    newQuickCommandIcon = 0;
+                }
+            }
+            ImGui.EndTable();
+        }
+
+        ImGui.Spacing();
+
+        using (var child = ImRaii.Child("QuickCommandsTableContainer", new Vector2(-1, -1), true))
+        {
+            if (child.Success)
+            {
+                if (ImGui.BeginTable("QuickCommandsTable", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp, new Vector2(-1, 0)))
+                {
+                    ImGui.TableSetupColumn("Icon", ImGuiTableColumnFlags.WidthFixed, 80);
+                    ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1);
+                    ImGui.TableSetupColumn("Command", ImGuiTableColumnFlags.WidthStretch, 2);
+                    ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, 50);
+                    ImGui.TableHeadersRow();
+
+                    for (int i = 0; i < plugin.Configuration.QuickCommands.Count; i++)
+                    {
+                        var entry = plugin.Configuration.QuickCommands[i];
+                        ImGui.TableNextRow();
+                        ImGui.TableSetColumnIndex(0);
+                        var iconId = entry.IconId;
+                        if (DrawIconSelector($"##qcmdIcon{i}", ref iconId))
+                        {
+                            entry.IconId = iconId;
+                            plugin.Configuration.Save();
+                        }
+                        ImGui.TableSetColumnIndex(1);
+                        var name = entry.Name;
+                        ImGui.SetNextItemWidth(-1);
+                        if (ImGui.InputText($"##qname{i}", ref name, 128))
+                        {
+                            entry.Name = name;
+                            plugin.Configuration.Save();
+                        }
+                        ImGui.TableSetColumnIndex(2);
+                        var cmd = entry.Command;
+                        ImGui.SetNextItemWidth(-1);
+                        if (ImGui.InputText($"##qcmd{i}", ref cmd, 256))
+                        {
+                            entry.Command = cmd;
+                            plugin.Configuration.Save();
+                        }
+                        ImGui.TableSetColumnIndex(3);
+                        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.6f, 0.0f, 0.0f, 1.0f));
+                        if (ImGui.Button($"X##delq{i}", new Vector2(25, 0)))
+                        {
+                            plugin.Configuration.QuickCommands.RemoveAt(i);
+                            plugin.Configuration.Save();
+                        }
+                        ImGui.PopStyleColor();
+                        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Delete");
+                    }
+                    ImGui.EndTable();
+                }
+                if (plugin.Configuration.QuickCommands.Count == 0)
+                {
+                    ImGui.Spacing();
+                    ImGui.TextDisabled("No quick commands. Add a name and command above.");
+                }
+            }
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
     }
 
     private bool DrawIconSelector(string label, ref uint iconId)
@@ -568,6 +833,29 @@ public class MainWindow : Window, IDisposable
                     if (ImGui.Button(buttonLabel, new Vector2(250, 0)))
                     {
                         isListeningForHotkey = !isListeningForHotkey;
+                    }
+
+                    var quickMenuHotkey = plugin.Configuration.QuickMenuHotkey;
+                    var quickMenuButtonLabel = isListeningForQuickMenuHotkey ? "Press any key... (Click elsewhere to cancel)" : $"{quickMenuHotkey}###QuickMenuHotkeyButton";
+                    bool wasListeningQuickMenu = isListeningForQuickMenuHotkey;
+                    if (wasListeningQuickMenu)
+                    {
+                        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.8f, 0.2f, 0.2f, 1.0f));
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1.0f, 0.3f, 0.3f, 1.0f));
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.6f, 0.1f, 0.1f, 1.0f));
+                    }
+                    ImGui.TableNextRow();
+                    ImGui.TableSetColumnIndex(0);
+                    ImGui.Text("Quick Menu Hotkey:");
+                    ImGuiComponents.HelpMarker("The keyboard key used to open the quick access command grid.");
+                    ImGui.TableSetColumnIndex(1);
+                    if (ImGui.Button(quickMenuButtonLabel, new Vector2(250, 0)))
+                    {
+                        isListeningForQuickMenuHotkey = !isListeningForQuickMenuHotkey;
+                    }
+                    if (wasListeningQuickMenu)
+                    {
+                        ImGui.PopStyleColor(3);
                     }
 
                     ImGui.EndTable();

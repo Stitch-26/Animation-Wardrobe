@@ -166,6 +166,65 @@ public class PenumbraManager
         return false;
     }
 
+    /// <summary>
+    /// Gets current mod settings for a mod in a collection.
+    /// Returns (ErrorCode, (Enabled, Priority, Conflicts, Inherit)?).
+    /// When Inherit is false, the mod has "Own Configuration" in that collection.
+    /// </summary>
+    public (int ErrorCode, (bool Enabled, int Priority, Dictionary<string, List<string>> Conflicts, bool Inherit)?) GetCurrentModSettings(Guid collectionId, string modPath, string modName)
+    {
+        try
+        {
+            return _getCurrentModSettingsSubscriber.InvokeFunc(collectionId, modPath, modName, false);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Debug($"GetCurrentModSettings for {modName}: {ex.Message}");
+            return (-1, null);
+        }
+    }
+
+    /// <summary>
+    /// Set whether a mod inherits in a collection. inherit=false means "Own Configuration" (turn off inheritance).
+    /// Same parameter order as GetCurrentModSettings: (collectionId, modPath, modName).
+    /// </summary>
+    public int SetModInherit(Guid collectionId, string modPath, string modName, bool inherit)
+    {
+        try
+        {
+            return _tryInheritModSubscriber.InvokeFunc(collectionId, modPath, modName, inherit);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning($"Could not set mod inherit: {ex.Message}");
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Returns mods in the given collection that have "Own Configuration" (Inherit == false) and are not enabled.
+    /// Each tuple is (ModPath, ModName).
+    /// </summary>
+    public List<(string ModPath, string ModName)> GetModsWithOwnConfiguration(Guid collectionId)
+    {
+        var result = new List<(string ModPath, string ModName)>();
+        try
+        {
+            var mods = GetMods();
+            foreach (var (modPath, modName) in mods)
+            {
+                var (ec, settings) = GetCurrentModSettings(collectionId, modPath, modName);
+                if (ec == 0 && settings.HasValue && !settings.Value.Inherit && !settings.Value.Enabled)
+                    result.Add((modPath, modName));
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Debug($"GetModsWithOwnConfiguration: {ex.Message}");
+        }
+        return result;
+    }
+
     public Dictionary<string, object?> GetChangedItems(string modDirectory, string modName)
     {
         try

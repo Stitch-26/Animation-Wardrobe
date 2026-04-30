@@ -1,4 +1,4 @@
-﻿using Dalamud.Configuration;
+using Dalamud.Configuration;
 using System;
 using System.Collections.Generic;
 
@@ -32,6 +32,14 @@ public class ModEntry
 }
 
 [Serializable]
+public class QuickCommandEntry
+{
+    public string Name { get; set; } = "";
+    public string Command { get; set; } = "";
+    public uint IconId { get; set; } = 0;
+}
+
+[Serializable]
 public class Configuration : IPluginConfiguration
 {
     public int Version { get; set; } = 1;
@@ -43,6 +51,8 @@ public class Configuration : IPluginConfiguration
     public Dictionary<string, uint> CategoryIcons { get; set; } = new();
     public string DefaultCollection { get; set; } = "";
     public Dalamud.Game.ClientState.Keys.VirtualKey Hotkey { get; set; } = Dalamud.Game.ClientState.Keys.VirtualKey.F9;
+    public Dalamud.Game.ClientState.Keys.VirtualKey QuickMenuHotkey { get; set; } = Dalamud.Game.ClientState.Keys.VirtualKey.F10;
+    public List<QuickCommandEntry> QuickCommands { get; set; } = new();
     public HotkeyWindowAnchor HotkeyWindowAnchor { get; set; } = HotkeyWindowAnchor.TopLeft;
     public float HotkeyWindowOpacity { get; set; } = 0.0f;
     public int ColumnsCount { get; set; } = 3;
